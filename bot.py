@@ -6,6 +6,9 @@ from telegram.constants import ParseMode
 from telegram.error import BadRequest
 from telegram.request import HTTPXRequest
 from datetime import datetime, timedelta # <-- Ubah ini untuk menghitung jam
+import os
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 # Impor konfigurasi dan modul lain yang sudah kita buat
 from config import TELEGRAM_BOT_TOKEN
@@ -413,10 +416,26 @@ async def post_init(application: Application) -> None:
                 data={"coin": coin, "broker": broker, "pair_display": pair_display}
             )
 
+def run_dummy_server():
+    """Menjalankan server web dummy agar Render tidak menganggap bot mati."""
+    port = int(os.environ.get("PORT", 8080)) # Render akan otomatis memberikan nilai PORT ini
+    class DummyHandler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-type", "text/html")
+            self.end_headers()
+            self.wfile.write(b"<html><body><h1>Bot Telegram Sedang Berjalan 24/7!</h1></body></html>")
+        def log_message(self, format, *args):
+            pass
+    HTTPServer(('0.0.0.0', port), DummyHandler).serve_forever()
+
 def main() -> None:
     """Jalankan bot."""
     # Inisialisasi Database
     database.init_db()
+
+    # Jalankan dummy web server di background
+    threading.Thread(target=run_dummy_server, daemon=True).start()
 
     # Gunakan HTTPXRequest untuk kestabilan ekstra di lingkungan server Cloud (Hugging Face)
     req = HTTPXRequest(connection_pool_size=8, connect_timeout=60.0, read_timeout=60.0)
