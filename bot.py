@@ -333,10 +333,11 @@ async def set_broker(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Perintah khusus Admin untuk mengirim pesan massal."""
     user_id = str(update.effective_user.id)
+    admin_id = str(ADMIN_CHAT_ID).strip().replace("'", "").replace('"', "") if ADMIN_CHAT_ID else ""
     
     # Cek apakah user adalah admin
-    if not ADMIN_CHAT_ID or user_id != str(ADMIN_CHAT_ID):
-        await update.message.reply_text(f"⛔ Anda tidak memiliki izin untuk menggunakan perintah ini.\n\n*Info Debug:* ID Telegram Anda adalah `{user_id}`.\nPastikan angka ini yang tertulis di file `.env` Anda.", parse_mode=ParseMode.MARKDOWN)
+    if not admin_id or user_id != admin_id:
+        await update.message.reply_text(f"⛔ Anda tidak memiliki izin untuk menggunakan perintah ini.\n\n*Info Debug:*\n- ID Anda: `{user_id}`\n- ID Server: `{admin_id}`\n\nJika 'ID Server' kosong, berarti bot belum membaca file .env yang baru. Silakan matikan terminal (Ctrl+C) dan jalankan ulang `python bot.py`.", parse_mode=ParseMode.MARKDOWN)
         return
         
     # Cek apakah ada pesan yang ingin di-broadcast
