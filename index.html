@@ -78,6 +78,7 @@
             <button class="action-btn" onclick="sendAction('analisa')">🔍 Analisa Koin</button>
             <button class="action-btn" onclick="sendAction('startalert')">🔔 Nyalakan Smart Alert</button>
             <button class="action-btn stop" onclick="sendAction('stopalert')">🔕 Matikan Alert</button>
+            <button class="action-btn" style="background: #8e8e93; color: white;" onclick="sendAction('status')">📋 Cek Info Status</button>
         </div>
     </div>
 
@@ -108,7 +109,7 @@
 
         // Fungsi mengirim data kembali ke Bot Python
         function sendAction(actionType) {
-            if (selectedCoins.length === 0) {
+            if (selectedCoins.length === 0 && actionType !== 'status') {
                 tg.showAlert("⚠️ Silakan pilih minimal 1 koin terlebih dahulu!");
                 return;
             }
