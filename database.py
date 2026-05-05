@@ -17,6 +17,17 @@ def init_db():
         conn.commit()
         logger.info("Database SQLite berhasil disiapkan.")
 
+def add_user_if_not_exists(chat_id):
+    """Menyimpan user baru ke database saat mereka menekan /start."""
+    with sqlite3.connect(DB_FILE) as conn:
+        conn.execute("INSERT OR IGNORE INTO users (chat_id, broker) VALUES (?, 'indodax')", (chat_id,))
+
+def get_all_users():
+    """Mengambil semua chat_id user untuk keperluan Broadcast."""
+    with sqlite3.connect(DB_FILE) as conn:
+        cursor = conn.execute("SELECT chat_id FROM users")
+        return [row[0] for row in cursor.fetchall()]
+
 def set_broker(chat_id, broker):
     with sqlite3.connect(DB_FILE) as conn:
         conn.execute("INSERT OR REPLACE INTO users (chat_id, broker) VALUES (?, ?)", (chat_id, broker))

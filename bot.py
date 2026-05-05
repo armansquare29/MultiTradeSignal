@@ -6,12 +6,9 @@ from telegram.constants import ParseMode
 from telegram.error import BadRequest
 from telegram.request import HTTPXRequest
 from datetime import datetime, timedelta # <-- Ubah ini untuk menghitung jam
-import os
-import threading
-from http.server import BaseHTTPRequestHandler, HTTPServer
 
 # Impor konfigurasi dan modul lain yang sudah kita buat
-from config import TELEGRAM_BOT_TOKEN
+from config import TELEGRAM_BOT_TOKEN, ADMIN_CHAT_ID
 from price_fetcher import get_crypto_ticker, format_ticker_for_ai
 from groq_analyzer import analyze_crypto_price
 import database # <-- Impor database SQLite
@@ -35,6 +32,9 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Mengirim pesan sambutan saat perintah /start dijalankan."""
     user = update.effective_user
     
+    # Simpan user ke database agar bisa menerima pesan broadcast di kemudian hari
+    database.add_user_if_not_exists(user.id)
+
     welcome_text = (
         "🚀 <b>PRO CRYPTO AI SIGNAL</b> 🚀\n\n"
         f"Selamat datang, Trader {user.mention_html()}!\n"
@@ -244,7 +244,8 @@ async def proses_start_alert(message, coin: str, context: ContextTypes.DEFAULT_T
 
     context.job_queue.run_repeating(smart_alert, interval=interval_seconds, first=delay_seconds, chat_id=chat_id, name=job_name, data={"coin": coin, "broker": broker, "pair_display": pair_display})
     database.add_alert(chat_id, coin, broker)
-    msg = f"🔔 Smart Alert {pair_display} ({broker.upper()}) diaktifkan untuk timeframe {TIMEFRAME_HOURS} Jam!\n\nPengecekan pertama: pukul {next_run_time.strftime('%H:%M')}."
+    wita_time = next_run_time + timedelta(hours=8)
+    msg = f"🔔 Smart Alert {pair_display} ({broker.upper()}) diaktifkan untuk timeframe {TIMEFRAME_HOURS} Jam!\n\nPengecekan pertama: pukul {wita_time.strftime('%H:%M')} WITA."
     await message.reply_text(msg)
 
 async def proses_start_alert_all(message, context: ContextTypes.DEFAULT_TYPE, is_callback=False) -> None:
@@ -272,7 +273,8 @@ async def proses_start_alert_all(message, context: ContextTypes.DEFAULT_TYPE, is
     msg = f"🔔 **Smart Alert (ALL COINS - {broker.upper()}) Diproses!** 🔔\n\n"
     if activated: msg += f"✅ **Berhasil Aktif:** {', '.join(activated)}\n"
     if already: msg += f"⚠️ **Sudah Aktif Sebelumnya:** {', '.join(already)}\n"
-    msg += f"\nPengecekan perdana: pukul {next_run_time.strftime('%H:%M')}."
+    wita_time = next_run_time + timedelta(hours=8)
+    msg += f"\nPengecekan perdana: pukul {wita_time.strftime('%H:%M')} WITA."
     
     await message.reply_text(msg, parse_mode=ParseMode.MARKDOWN)
 
@@ -327,6 +329,40 @@ async def stop_alert(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
 async def set_broker(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Perintah untuk memilih broker/exchange."""
     await update.message.reply_text("📱 Silakan klik tombol **'Buka Aplikasi Pro Kripto'** di bawah untuk mengganti Broker.")
+
+async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Perintah khusus Admin untuk mengirim pesan massal."""
+    user_id = str(update.effective_user.id)
+    
+    # Cek apakah user adalah admin
+    if not ADMIN_CHAT_ID or user_id != str(ADMIN_CHAT_ID):
+        await update.message.reply_text("⛔ Anda tidak memiliki izin untuk menggunakan perintah ini.")
+        return
+        
+    # Cek apakah ada pesan yang ingin di-broadcast
+    if not context.args:
+        await update.message.reply_text("⚠️ Format salah!\nGunakan: `/broadcast [pesan Anda]`", parse_mode=ParseMode.MARKDOWN)
+        return
+        
+    pesan = " ".join(context.args)
+    users = database.get_all_users()
+    
+    if not users:
+        await update.message.reply_text("⚠️ Belum ada pengguna di database.")
+        return
+        
+    await update.message.reply_text(f"⏳ Mulai mengirim pesan broadcast ke {len(users)} pengguna...")
+    
+    berhasil, gagal = 0, 0
+    for chat_id in users:
+        try:
+            await context.bot.send_message(chat_id=chat_id, text=f"📢 **PENGUMUMAN ADMIN** 📢\n\n{pesan}", parse_mode=ParseMode.MARKDOWN)
+            berhasil += 1
+        except Exception as e:
+            logger.error(f"Gagal mengirim broadcast ke {chat_id}: {e}")
+            gagal += 1
+            
+    await update.message.reply_text(f"✅ **Broadcast Selesai!**\nBerhasil dikirim: {berhasil}\nGagal (Bot diblokir user): {gagal}", parse_mode=ParseMode.MARKDOWN)
 
 async def web_app_data_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Menerima dan memproses data aksi yang dikirim dari Web App (HTML)."""
@@ -390,7 +426,8 @@ async def post_init(application: Application) -> None:
         BotCommand("broker", "Pilih Broker (Indodax / Binance)"),
         BotCommand("analisa", "Analisis instan koin (contoh: /analisa sol)"),
         BotCommand("start_alert", "Aktifkan sinyal (contoh: /start_alert btc)"),
-        BotCommand("stop_alert", "Matikan sinyal (contoh: /stop_alert doge)")
+        BotCommand("stop_alert", "Matikan sinyal (contoh: /stop_alert doge)"),
+        BotCommand("broadcast", "Kirim pesan massal (Hanya Admin)")
     ])
     
     # RE-LOAD SEMUA ALARM DARI DATABASE SAAT BOT RESTART
@@ -416,26 +453,10 @@ async def post_init(application: Application) -> None:
                 data={"coin": coin, "broker": broker, "pair_display": pair_display}
             )
 
-def run_dummy_server():
-    """Menjalankan server web dummy agar Render tidak menganggap bot mati."""
-    port = int(os.environ.get("PORT", 8080)) # Render akan otomatis memberikan nilai PORT ini
-    class DummyHandler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            self.send_response(200)
-            self.send_header("Content-type", "text/html")
-            self.end_headers()
-            self.wfile.write(b"<html><body><h1>Bot Telegram Sedang Berjalan 24/7!</h1></body></html>")
-        def log_message(self, format, *args):
-            pass
-    HTTPServer(('0.0.0.0', port), DummyHandler).serve_forever()
-
 def main() -> None:
     """Jalankan bot."""
     # Inisialisasi Database
     database.init_db()
-
-    # Jalankan dummy web server di background
-    threading.Thread(target=run_dummy_server, daemon=True).start()
 
     # Gunakan HTTPXRequest untuk kestabilan ekstra di lingkungan server Cloud (Hugging Face)
     req = HTTPXRequest(connection_pool_size=8, connect_timeout=60.0, read_timeout=60.0)
@@ -455,6 +476,7 @@ def main() -> None:
     application.add_handler(CommandHandler("analisa", analisa))
     application.add_handler(CommandHandler("start_alert", start_alert))
     application.add_handler(CommandHandler("stop_alert", stop_alert))
+    application.add_handler(CommandHandler("broadcast", broadcast))
     application.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, web_app_data_handler))
 
     # Mulai polling untuk menerima update dari Telegram
