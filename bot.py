@@ -1,7 +1,7 @@
 import logging
 import json
-from telegram import Update, BotCommand, WebAppInfo, ReplyKeyboardMarkup, KeyboardButton
-from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
+from telegram import Update, BotCommand, WebAppInfo, ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters, CallbackQueryHandler
 from telegram.constants import ParseMode
 from telegram.error import BadRequest
 from telegram.request import HTTPXRequest
@@ -19,6 +19,7 @@ TIMEFRAME_HOURS = 4
 # ------------------------------------
 
 ALL_COINS_LIST = ["btc", "eth", "sol", "doge", "pepe", "shib", "sui", "avax", "near", "rndr", "fet", "ada"]
+MONETAQ_ADS_URL = "https://omg10.com/4/10964025"
 
 # Konfigurasi logging untuk memantau aktivitas bot
 logging.basicConfig(
@@ -128,7 +129,11 @@ async def smart_alert(context: ContextTypes.DEFAULT_TYPE) -> None:
                 f"> Rekomendasi: **CLOSE POSITION (JUAL SEKARANG)**\n"
                 f"> Estimasi Profit: Rp {profit:,}".replace(',', '.')
             )
-            await context.bot.send_message(chat_id=chat_id, text=new_message, parse_mode=ParseMode.MARKDOWN)
+            keyboard = [
+                [InlineKeyboardButton("🌐 Lanjut Memantau (Klik Iklan)", url=MONETAQ_ADS_URL)],
+                [InlineKeyboardButton("🔕 Matikan Alert Ini", callback_data=f"stop_{coin}_{broker}")]
+            ]
+            await context.bot.send_message(chat_id=chat_id, text=new_message, parse_mode=ParseMode.MARKDOWN, reply_markup=InlineKeyboardMarkup(keyboard))
             # Hapus dari memori karena sudah take profit
             database.remove_trade(chat_id, coin, broker)
             return  # Berhenti di sini, tidak perlu analisa AI untuk siklus ini
@@ -365,6 +370,34 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             
     await update.message.reply_text(f"✅ **Broadcast Selesai!**\nBerhasil dikirim: {berhasil}\nGagal (Bot diblokir user): {gagal}", parse_mode=ParseMode.MARKDOWN)
 
+async def alert_button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Menangani aksi saat user menekan tombol Matikan Alert di pesan Smart Alert."""
+    query = update.callback_query
+    await query.answer()
+    data = query.data
+    
+    if data.startswith("stop_"):
+        parts = data.split("_")
+        if len(parts) == 3:
+            _, coin, broker = parts
+            chat_id = query.message.chat_id
+            job_name = f"{chat_id}_{coin}_{broker}"
+            
+            # Matikan job di memory
+            current_jobs = context.job_queue.get_jobs_by_name(job_name)
+            for job in current_jobs:
+                job.schedule_removal()
+                
+            # Hapus dari database
+            database.remove_alert(chat_id, coin, broker)
+            
+            # Update pesan agar tombol hilang
+            original_text = query.message.text
+            await query.message.edit_text(
+                text=f"{original_text}\n\n*🔕 Peringatan: Pemantauan otomatis untuk koin ini telah dimatikan.*",
+                parse_mode=ParseMode.MARKDOWN
+            )
+
 async def web_app_data_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Menerima dan memproses data aksi yang dikirim dari Web App (HTML)."""
     try:
@@ -478,6 +511,7 @@ def main() -> None:
     application.add_handler(CommandHandler("start_alert", start_alert))
     application.add_handler(CommandHandler("stop_alert", stop_alert))
     application.add_handler(CommandHandler("broadcast", broadcast))
+    application.add_handler(CallbackQueryHandler(alert_button_callback))
     application.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, web_app_data_handler))
 
     # Mulai polling untuk menerima update dari Telegram
