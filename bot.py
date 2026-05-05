@@ -336,7 +336,7 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     
     # Cek apakah user adalah admin
     if not ADMIN_CHAT_ID or user_id != str(ADMIN_CHAT_ID):
-        await update.message.reply_text("⛔ Anda tidak memiliki izin untuk menggunakan perintah ini.")
+        await update.message.reply_text(f"⛔ Anda tidak memiliki izin untuk menggunakan perintah ini.\n\n*Info Debug:* ID Telegram Anda adalah `{user_id}`.\nPastikan angka ini yang tertulis di file `.env` Anda.", parse_mode=ParseMode.MARKDOWN)
         return
         
     # Cek apakah ada pesan yang ingin di-broadcast
