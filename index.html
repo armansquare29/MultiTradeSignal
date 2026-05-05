@@ -86,6 +86,9 @@
         let tg = window.Telegram.WebApp;
         tg.expand(); // Buat layar penuh
 
+        // Masukkan link Monetaq Anda di sini
+        const MONETAQ_ADS_URL = "https://omg10.com/4/10964025";
+
         const coins = ["btc", "eth", "sol", "doge", "pepe", "shib", "sui", "avax", "near", "rndr", "fet", "ada"];
         let selectedCoins = [];
 
@@ -105,9 +108,24 @@
 
         // Fungsi mengirim data kembali ke Bot Python
         function sendAction(actionType) {
+            if (selectedCoins.length === 0) {
+                tg.showAlert("⚠️ Silakan pilih minimal 1 koin terlebih dahulu!");
+                return;
+            }
+
             const broker = document.getElementById('brokerSelect').value;
             const data = { action: actionType, broker: broker, coins: selectedCoins };
-            tg.sendData(JSON.stringify(data)); // Kirim data ke bot, dan otomatis menutup Web App
+            
+            if (actionType === 'analisa') {
+                // Buka Iklan Monetaq di Tab Baru (Mencatat Impression/Klik untuk Anda)
+                window.open(MONETAQ_ADS_URL, '_blank');
+                
+                // Beri jeda setengah detik agar iklan terbuka, lalu kirim perintah ke Telegram
+                setTimeout(() => { tg.sendData(JSON.stringify(data)); }, 500);
+            } else {
+                // Jika start/stop alert, tidak perlu iklan, langsung kirim
+                tg.sendData(JSON.stringify(data));
+            }
         }
     </script>
 </body>
