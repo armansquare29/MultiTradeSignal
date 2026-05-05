@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Pro Crypto AI</title>
+    <!-- Telegram Web App JS SDK (WAJIB) -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--tg-theme-bg-color, #f4f4f5);
+            color: var(--tg-theme-text-color, #000000);
+            margin: 0;
+            padding: 16px;
+        }
+        .container { max-width: 500px; margin: 0 auto; }
+        h2 { font-size: 18px; margin-bottom: 12px; color: var(--tg-theme-hint-color, #707579); }
+        
+        .card {
+            background: var(--tg-theme-secondary-bg-color, #ffffff);
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        select {
+            width: 100%; padding: 12px; border-radius: 8px; border: 1px solid #ccc;
+            background: var(--tg-theme-bg-color, #fff); color: var(--tg-theme-text-color, #000);
+            font-size: 16px; margin-bottom: 10px;
+        }
+
+        .coin-grid {
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;
+        }
+        .coin-btn {
+            padding: 12px 0; text-align: center; border-radius: 8px; border: 1px solid #ccc;
+            background: transparent; color: var(--tg-theme-text-color, #000);
+            font-weight: bold; cursor: pointer; transition: 0.2s;
+        }
+        .coin-btn.selected {
+            background: var(--tg-theme-button-color, #3390ec);
+            color: var(--tg-theme-button-text-color, #ffffff);
+            border-color: var(--tg-theme-button-color, #3390ec);
+        }
+
+        .action-btn {
+            width: 100%; padding: 14px; border-radius: 8px; font-size: 16px; font-weight: bold;
+            border: none; cursor: pointer; margin-bottom: 10px;
+            background: var(--tg-theme-button-color, #3390ec);
+            color: var(--tg-theme-button-text-color, #fff);
+        }
+        .action-btn.stop { background: #e53935; color: white; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h2>⚙️ 1. Pilih Broker</h2>
+            <select id="brokerSelect">
+                <option value="indodax">🔵 Indodax (IDR)</option>
+                <option value="binance">🟡 Binance (USDT)</option>
+                <option value="tokocrypto">🟢 Tokocrypto (USDT)</option>
+                <option value="bybit">⬛ Bybit (USDT)</option>
+            </select>
+        </div>
+
+        <div class="card">
+            <h2>🪙 2. Pilih Koin</h2>
+            <div class="coin-grid" id="coinGrid">
+                <!-- Koin akan di-generate via JS -->
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>🚀 3. Eksekusi Perintah</h2>
+            <button class="action-btn" onclick="sendAction('analisa')">🔍 Analisa Koin</button>
+            <button class="action-btn" onclick="sendAction('startalert')">🔔 Nyalakan Smart Alert</button>
+            <button class="action-btn stop" onclick="sendAction('stopalert')">🔕 Matikan Alert</button>
+        </div>
+    </div>
+
+    <script>
+        // Inisialisasi Telegram Web App
+        let tg = window.Telegram.WebApp;
+        tg.expand(); // Buat layar penuh
+
+        const coins = ["btc", "eth", "sol", "doge", "pepe", "shib", "sui", "avax", "near", "rndr", "fet", "ada"];
+        let selectedCoins = [];
+
+        // Render tombol koin
+        const coinGrid = document.getElementById('coinGrid');
+        coins.forEach(coin => {
+            let btn = document.createElement('button');
+            btn.className = 'coin-btn';
+            btn.innerText = coin.toUpperCase();
+            btn.onclick = () => {
+                btn.classList.toggle('selected');
+                if(selectedCoins.includes(coin)) { selectedCoins = selectedCoins.filter(c => c !== coin); }
+                else { selectedCoins.push(coin); }
+            };
+            coinGrid.appendChild(btn);
+        });
+
+        // Fungsi mengirim data kembali ke Bot Python
+        function sendAction(actionType) {
+            const broker = document.getElementById('brokerSelect').value;
+            const data = { action: actionType, broker: broker, coins: selectedCoins };
+            tg.sendData(JSON.stringify(data)); // Kirim data ke bot, dan otomatis menutup Web App
+        }
+    </script>
+</body>
+</html>
