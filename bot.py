@@ -141,93 +141,93 @@ async def smart_alert(context: ContextTypes.DEFAULT_TYPE) -> None:
     formatted_data = format_ticker_for_ai(pair_display, ticker_data)
     ai_response = analyze_crypto_price(pair_display, formatted_data)
  
-    # Log aktivitas ke terminal laptop agar Anda tahu bot bekerja
-    if "**Rekomendasi:** TAHAN" in ai_response:
-        logger.info("Smart Alert: AI menyarankan TAHAN. Pesan tidak dikirim ke Telegram (Mode Senyap).")
-    elif "**Rekomendasi:** BELI" not in ai_response and "**Rekomendasi:** JUAL" not in ai_response:
-        logger.warning("Smart Alert: AI tidak memberikan rekomendasi yang jelas. Pesan diabaikan.")
-
-    # Hanya kirim pesan jika rekomendasinya BELI atau JUAL
-    if "**Rekomendasi:** BELI" in ai_response or "**Rekomendasi:** JUAL" in ai_response:
-        rekomendasi = "N/A"
-        analisa = "N/A"
-        target_tp = 0
-        try:
-            lines = [line.strip() for line in ai_response.strip().split('\n') if line.strip()]
-            for line in lines:
-                if "**Rekomendasi:**" in line:
-                    rekomendasi = line.replace("**Rekomendasi:**", "").strip()
-                elif "**Target TP:**" in line:
-                    tp_str = line.replace("**Target TP:**", "").strip()
-                    # Bersihkan jika AI memasukkan titik/koma ke dalam angka
-                    tp_clean = ''.join(filter(str.isdigit, tp_str))
-                    target_tp = int(tp_clean) if tp_clean else 0
-                elif "**Analisis Singkat:**" in line:
-                    analisa = line.replace("**Analisis Singkat:**", "").strip()
-        except (IndexError, Exception) as e:
-            logger.error(f"Gagal mem-parsing respon AI: {e}. Menggunakan format mentah.")
-            # Fallback jika parsing gagal
-            await context.bot.send_message(
-                chat_id=chat_id, 
-                text=f"🚨 **SMART ALERT (Parse Error)** 🚨\n\n{ai_response}"
-            )
-            return
-
-        harga_sekarang_formatted = f"Rp {harga_sekarang:,}".replace(',', '.') if harga_sekarang > 0 else "Tidak tersedia"
-
-        if "BELI" in rekomendasi:
-            # Jika AI lupa memberi target TP atau targetnya lebih rendah dari harga saat ini, 
-            # bot akan otomatis membuat default target TP naik 2% dari harga saat ini.
-            if target_tp <= harga_sekarang:
-                target_tp = int(harga_sekarang * 1.02)
-                
-            # Simpan transaksi ke memori bot
-            database.save_trade(chat_id, coin, broker, harga_sekarang, target_tp)
-            
-            tp_formatted = f"Rp {target_tp:,}".replace(',', '.')
-            new_message = (
-                "🟢 **Smart Alert (Sinyal BELI)** 🟢\n"
-                f"> Pair/TF: {pair_display} / {TIMEFRAME_HOURS} Jam\n"
-                f"> Broker: {broker.upper()}\n"
-                f"> Harga Sekarang: {harga_sekarang_formatted}\n"
-                f"> Rekomendasi: **{rekomendasi}**\n"
-                f"> 🎯 Target TP: {tp_formatted}\n"
-                f"> Analisa Singkat: {analisa}"
-            )
-        elif "JUAL" in rekomendasi and trade:
-            # AI menyuruh JUAL (misal memotong kerugian / Cut Loss), dan kita sedang punya posisi terbuka
-            buy_price = trade["buy_price"]
-            profit = harga_sekarang - buy_price
-            status = "Profit" if profit > 0 else "Loss"
-            
-            new_message = (
-                f"🔴 **Smart Alert (Tutup Posisi / {status})** 🔴\n"
-                f"> Pair/TF: {pair_display} / {TIMEFRAME_HOURS} Jam\n"
-                f"> Broker: {broker.upper()}\n"
-                f"> Harga Sekarang: {harga_sekarang_formatted}\n"
-                f"> Rekomendasi: **{rekomendasi}**\n"
-                f"> Hasil Trading: {status} (Rp {abs(profit):,}".replace(',', '.') + ")\n"
-                f"> Analisa Singkat: {analisa}"
-            )
-            # Hapus transaksi dari memori
-            database.remove_trade(chat_id, coin, broker)
-        else:
-            # Sinyal JUAL biasa dari AI tapi kita tidak punya posisi buy sebelumnya
-            new_message = (
-                "🔴 **Smart Alert (Sinyal JUAL)** 🔴\n"
-                f"> Pair/TF: {pair_display} / {TIMEFRAME_HOURS} Jam\n"
-                f"> Broker: {broker.upper()}\n"
-                f"> Harga Sekarang: {harga_sekarang_formatted}\n"
-                f"> Rekomendasi: **{rekomendasi}**\n"
-                f"> Analisa Singkat: {analisa}"
-            )
-
-        # Kirim pesan dengan format Markdown
+    rekomendasi = "TAHAN"
+    analisa = "Tidak ada analisa spesifik."
+    target_tp = 0
+    try:
+        lines = [line.strip() for line in ai_response.strip().split('\n') if line.strip()]
+        for line in lines:
+            if "**Rekomendasi:**" in line:
+                rekomendasi = line.replace("**Rekomendasi:**", "").strip()
+            elif "**Target TP:**" in line:
+                tp_str = line.replace("**Target TP:**", "").strip()
+                tp_clean = ''.join(filter(str.isdigit, tp_str))
+                target_tp = int(tp_clean) if tp_clean else 0
+            elif "**Analisis Singkat:**" in line:
+                analisa = line.replace("**Analisis Singkat:**", "").strip()
+    except Exception as e:
+        logger.error(f"Gagal mem-parsing respon AI: {e}")
+        keyboard = [
+            [InlineKeyboardButton("🌐 Lanjut Memantau (Klik Iklan)", url=MONETAQ_ADS_URL)],
+            [InlineKeyboardButton("🔕 Matikan Alert Ini", callback_data=f"stop_{coin}_{broker}")]
+        ]
         await context.bot.send_message(
             chat_id=chat_id, 
-            text=new_message,
-            parse_mode=ParseMode.MARKDOWN
+            text=f"🚨 **SMART ALERT (Update Pasar)** 🚨\n\n{ai_response}",
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
+        return
+
+    harga_sekarang_formatted = f"Rp {harga_sekarang:,}".replace(',', '.') if harga_sekarang > 0 else "Tidak tersedia"
+
+    if "BELI" in rekomendasi:
+        if target_tp <= harga_sekarang:
+            target_tp = int(harga_sekarang * 1.02)
+        database.save_trade(chat_id, coin, broker, harga_sekarang, target_tp)
+        tp_formatted = f"Rp {target_tp:,}".replace(',', '.')
+        new_message = (
+            "🟢 **Smart Alert (Sinyal BELI)** 🟢\n"
+            f"> Pair/TF: {pair_display} / {TIMEFRAME_HOURS} Jam\n"
+            f"> Broker: {broker.upper()}\n"
+            f"> Harga Sekarang: {harga_sekarang_formatted}\n"
+            f"> Rekomendasi: **{rekomendasi}**\n"
+            f"> 🎯 Target TP: {tp_formatted}\n"
+            f"> Analisa Singkat: {analisa}"
+        )
+    elif "JUAL" in rekomendasi and trade:
+        buy_price = trade["buy_price"]
+        profit = harga_sekarang - buy_price
+        status = "Profit" if profit > 0 else "Loss"
+        new_message = (
+            f"🔴 **Smart Alert (Tutup Posisi / {status})** 🔴\n"
+            f"> Pair/TF: {pair_display} / {TIMEFRAME_HOURS} Jam\n"
+            f"> Broker: {broker.upper()}\n"
+            f"> Harga Sekarang: {harga_sekarang_formatted}\n"
+            f"> Rekomendasi: **{rekomendasi}**\n"
+            f"> Hasil Trading: {status} (Rp {abs(profit):,}".replace(',', '.') + ")\n"
+            f"> Analisa Singkat: {analisa}"
+        )
+        database.remove_trade(chat_id, coin, broker)
+    elif "JUAL" in rekomendasi:
+        new_message = (
+            "🔴 **Smart Alert (Sinyal JUAL)** 🔴\n"
+            f"> Pair/TF: {pair_display} / {TIMEFRAME_HOURS} Jam\n"
+            f"> Broker: {broker.upper()}\n"
+            f"> Harga Sekarang: {harga_sekarang_formatted}\n"
+            f"> Rekomendasi: **{rekomendasi}**\n"
+            f"> Analisa Singkat: {analisa}"
+        )
+    else:
+        # Skenario "TAHAN" (Mode Update Pasar) - Ini yang sebelumnya terlewat!
+        new_message = (
+            "⚪ **Smart Alert (Update Pasar)** ⚪\n"
+            f"> Pair/TF: {pair_display} / {TIMEFRAME_HOURS} Jam\n"
+            f"> Broker: {broker.upper()}\n"
+            f"> Harga Sekarang: {harga_sekarang_formatted}\n"
+            f"> Rekomendasi: **{rekomendasi}**\n"
+            f"> Analisa Singkat: {analisa}"
+        )
+
+    keyboard = [
+        [InlineKeyboardButton("🌐 Lanjut Memantau (Klik Iklan)", url=MONETAQ_ADS_URL)],
+        [InlineKeyboardButton("🔕 Matikan Alert Ini", callback_data=f"stop_{coin}_{broker}")]
+    ]
+    await context.bot.send_message(
+        chat_id=chat_id, 
+        text=new_message,
+        parse_mode=ParseMode.MARKDOWN,
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
 
 async def proses_start_alert(message, coin: str, context: ContextTypes.DEFAULT_TYPE, is_callback=False) -> None:
     """Fungsi pembantu untuk memproses aktivasi alert 1 koin."""
